@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Log in – QR Attendance</title>
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<div class="login">
+  <h1>QR Attendance Register</h1>
+  <p class="muted">Scan. Record. Notify. Protect.</p>
+  <div class="panel">
+    <form id="f">
+      <label for="email">Email</label>
+      <input id="email" type="email" autocomplete="username" required>
+      <label for="pw">Password</label>
+      <input id="pw" type="password" autocomplete="current-password" required>
+      <p id="msg" class="err hide" role="alert"></p>
+      <p><button class="btn" id="go" style="width:100%">Log in</button></p>
+    </form>
+  </div>
+</div>
+<div id="toast"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="config.js"></script>
+<script src="js/app.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+function show(m) { $('msg').textContent = m; $('msg').classList.remove('hide'); }
+
+async function route() {
+  const p = await getProfile();
+  if (!p) return false;
+  if (p.is_active && p.role === 'admin') { location.href = 'admin/index.html'; return true; }
+  await sb.auth.signOut();
+  show(p.is_active
+    ? 'Your ' + p.role + ' dashboard is coming in a later phase.'
+    : 'This account is switched off. Contact the school administrator.');
+  return true;
+}
+
+$('f').onsubmit = async e => {
+  e.preventDefault();
+  $('msg').classList.add('hide');
+  $('go').disabled = true;
+  const { error } = await sb.auth.signInWithPassword({ email: $('email').value.trim(), password: $('pw').value });
+  if (error) {
+    show(configOk ? 'Wrong email or password.' : 'Setup incomplete: fill in config.js first.');
+    $('go').disabled = false;
+    return;
+  }
+  if (!(await route())) show('Your account has no role yet. Ask the administrator.');
+  $('go').disabled = false;
+};
+
+if (configOk) route();
+</script>
+</body>
+</html>
