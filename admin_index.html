@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Admin – QR Attendance</title>
+<link rel="stylesheet" href="../css/styles.css">
+</head>
+<body>
+<header class="top">
+  <b id="brand">QR Attendance</b>
+  <span><span id="who"></span> <button class="btn sm ghost" id="logoutBtn">Log out</button></span>
+</header>
+<nav class="tabs" id="tabs">
+  <button data-tab="overview" class="on">Overview</button>
+  <button data-tab="students">Students</button>
+  <button data-tab="setup">Setup</button>
+</nav>
+
+<main>
+  <!-- ============ OVERVIEW ============ -->
+  <section id="overview" class="tab">
+    <h2>Overview</h2>
+    <div class="stats" id="stats"></div>
+    <div id="todo"></div>
+  </section>
+
+  <!-- ============ STUDENTS ============ -->
+  <section id="students" class="tab hide">
+    <h2>Students</h2>
+    <div id="printBar" class="note hide">
+      <b id="printMsg"></b> These codes are shown only once. Print or save them now.
+      <div class="bar">
+        <button class="btn amber" id="printAgain">Print cards</button>
+        <button class="btn ghost" id="clearCards">Clear cards</button>
+      </div>
+    </div>
+    <div class="bar">
+      <button class="btn" id="addStu">Add student</button>
+      <button class="btn amber" id="issueSel">Issue QR and print selected</button>
+    </div>
+    <div class="grid2">
+      <select id="fClass" aria-label="Filter by class"></select>
+      <input id="fSearch" type="search" placeholder="Search name or number" aria-label="Search students">
+    </div>
+    <div class="bar">
+      <button class="btn sm ghost" id="selAll">Select all shown</button>
+      <button class="btn sm ghost" id="selNone">Clear selection</button>
+      <button class="btn sm ghost" id="selNoQr">Select those without QR</button>
+    </div>
+    <p class="muted" id="stuCount"></p>
+    <div class="panel" id="stuList"></div>
+  </section>
+
+  <!-- ============ SETUP ============ -->
+  <section id="setup" class="tab hide">
+    <h2>Setup</h2>
+    <div class="panel">
+      <h3>School details</h3>
+      <label for="sName">School name</label><input id="sName">
+      <div class="grid2">
+        <div><label for="sLate">Late after</label><input id="sLate" type="time"></div>
+        <div><label for="sAbsent">Absent review after</label><input id="sAbsent" type="time"></div>
+      </div>
+      <p><button class="btn" id="saveSettings">Save school details</button></p>
+    </div>
+
+    <div class="panel">
+      <h3>Academic sessions</h3>
+      <div id="sessList"></div>
+      <label for="ssName">New session name (e.g. 2026/2027)</label><input id="ssName">
+      <div class="grid2">
+        <div><label for="ssStart">Starts on</label><input id="ssStart" type="date"></div>
+        <div><label for="ssEnd">Ends on</label><input id="ssEnd" type="date"></div>
+      </div>
+      <p><button class="btn" id="addSess">Add session</button></p>
+    </div>
+
+    <div class="panel">
+      <h3>Classes and arms</h3>
+      <div id="clsList"></div>
+      <div class="grid2">
+        <div><label for="cSection">Section</label>
+          <select id="cSection"><option value="primary">Primary</option><option value="secondary">Secondary</option></select></div>
+        <div><label for="cName">Class (e.g. JSS 1)</label><input id="cName"></div>
+      </div>
+      <label for="cArm">Arm (e.g. A, Gold. Leave empty if none)</label><input id="cArm">
+      <p><button class="btn" id="addCls">Add class</button></p>
+    </div>
+  </section>
+</main>
+
+<!-- ============ STUDENT DIALOG ============ -->
+<dialog id="stuDlg">
+  <h3 id="stuTitle">Student</h3>
+  <input type="hidden" id="sId">
+  <label for="sNo">Student ID number</label><input id="sNo">
+  <label for="sFirst">First name</label><input id="sFirst">
+  <label for="sMid">Middle name (optional)</label><input id="sMid">
+  <label for="sLast">Last name</label><input id="sLast">
+  <div class="grid2">
+    <div><label for="sClass">Class</label><select id="sClass"></select></div>
+    <div><label for="sSess">Session</label><select id="sSess"></select></div>
+  </div>
+  <div class="grid2">
+    <div><label for="sGender">Gender (optional)</label>
+      <select id="sGender"><option value="">Not recorded</option><option value="male">Male</option><option value="female">Female</option></select></div>
+    <div><label for="sStatus">Status</label>
+      <select id="sStatus"><option value="active">Active</option><option value="inactive">Inactive</option><option value="graduated">Graduated</option><option value="withdrawn">Withdrawn</option></select></div>
+  </div>
+  <div class="bar">
+    <button class="btn" id="saveStu">Save student</button>
+    <button class="btn ghost" id="closeStu">Cancel</button>
+  </div>
+</dialog>
+
+<!-- ============ GUARDIAN DIALOG ============ -->
+<dialog id="gDlg">
+  <h3 id="gTitle">Guardians</h3>
+  <div id="gLinks"></div>
+
+  <h3>Add a new guardian</h3>
+  <label for="gName">Full name</label><input id="gName">
+  <div class="grid2">
+    <div><label for="gRel">Relationship</label>
+      <select id="gRel"><option>Mother</option><option>Father</option><option>Guardian</option><option>Other</option></select></div>
+    <div><label for="gPhone">Phone (WhatsApp and SMS)</label><input id="gPhone" type="tel" placeholder="08012345678"></div>
+  </div>
+  <label for="gEmail">Email (optional)</label><input id="gEmail" type="email">
+  <p><button class="btn" id="gAdd">Add and link guardian</button></p>
+
+  <h3>Link an existing guardian</h3>
+  <p class="muted">Useful for brothers and sisters who share a parent.</p>
+  <div class="bar"><input id="gSearch" placeholder="Name or phone" aria-label="Search guardians"><button class="btn sm" id="gFind">Search</button></div>
+  <div id="gResults"></div>
+  <p><button class="btn ghost" id="gClose">Close</button></p>
+</dialog>
+
+<div id="toast"></div>
+<div id="printArea"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="../config.js"></script>
+<script src="../js/app.js"></script>
+<script>
+(async () => {
+const me = await requireAdmin('../');
+if (!me) return;
+
+const $ = id => document.getElementById(id);
+const val = id => $(id).value.trim();
+const S = { settings: null, sessions: [], classes: [], students: [], stuMap: new Map(), qr: new Map(), guardians: 0 };
+const G = { student: null, links: [] };
+
+const clsName = id => { const c = S.classes.find(x => x.id === id); return c ? c.class_name + (c.arm ? ' ' + c.arm : '') : 'No class'; };
+const fullName = s => [s.first_name, s.middle_name, s.last_name].filter(Boolean).join(' ');
+const hhmm = t => (t || '').slice(0, 5);
+
+// Phone: accepts 08012345678 or 2348012345678; returns 234... , null (empty) or false (invalid)
+function normPhone(p) {
+  p = (p || '').replace(/[\s\-()+]/g, '');
+  if (!p) return null;
+  if (/^0\d{10}$/.test(p)) return '234' + p.slice(1);
+  if (/^234\d{10}$/.test(p)) return p;
+  return false;
+}
+
+// Read all rows even when there are more than 1000
+async function fetchAll(make) {
+  let out = [], from = 0;
+  for (;;) {
+    const { data, error } = await make(from, from + 999);
+    if (error) throw error;
+    out = out.concat(data);
+    if (data.length < 1000) return out;
+    from += 1000;
+  }
+}
+
+async function loadAll() {
+  try {
+    const [st, se, cl] = await Promise.all([
+      sb.from('school_settings').select('*').eq('id', 1).single(),
+      sb.from('academic_sessions').select('*').order('starts_on', { ascending: false }),
+      sb.from('school_classes').select('*').order('section').order('class_name').order('arm')
+    ]);
+    for (const r of [st, se, cl]) if (r.error) throw r.error;
+    S.settings = st.data; S.sessions = se.data; S.classes = cl.data;
+    S.students = await fetchAll((a, b) => sb.from('students').select('*').order('last_name').order('id').range(a, b));
+    S.stuMap = new Map(S.students.map(s => [s.id, s]));
+    const q = await fetchAll((a, b) => sb.rpc('qr_active_students').range(a, b));
+    S.qr = new Map(q.map(r => [r.student_id, r.issued_at]));
+    const g = await sb.from('guardians').select('id', { count: 'exact', head: true });
+    S.guardians = g.count || 0;
+  } catch (e) { toast(niceError(e), true); }
+  renderAll();
+}
+
+// ---------- tabs ----------
+$('tabs').onclick = e => {
+  const t = e.target.dataset.tab; if (!t) return;
+  document.querySelectorAll('.tab').forEach(x => x.classList.toggle('hide', x.id !== t));
+  document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === t));
+};
+
+// ---------- render ----------
+function renderAll() { renderOverview(); renderSetup(); fillClassSelects(); renderStudents(); }
+
+function renderOverview() {
+  const active = S.students.filter(s => s.status === 'active');
+  const withQr = active.filter(s => S.qr.has(s.id)).length;
+  $('brand').textContent = S.settings ? S.settings.school_name : 'QR Attendance';
+  $('stats').innerHTML = [
+    ['Active students', active.length], ['With QR code', withQr], ['Without QR code', active.length - withQr],
+    ['Classes', S.classes.length], ['Guardians', S.guardians]
+  ].map(([l, n]) => `<div class="stat"><b>${n}</b>${l}</div>`).join('');
+  const todo = [];
+  if (!S.sessions.some(s => s.is_current)) todo.push('Setup tab: add an academic session and set it as current.');
+  if (!S.classes.length) todo.push('Setup tab: add your classes and arms.');
+  if (S.classes.length && !S.students.length) todo.push('Students tab: add your first student.');
+  if (active.length - withQr > 0) todo.push((active.length - withQr) + ' active student(s) still need a QR code.');
+  $('todo').innerHTML = todo.length ? '<div class="note"><b>Next steps</b><br>' + todo.map(esc).join('<br>') + '</div>' : '';
+}
+
+function renderSetup() {
+  const s = S.settings || {};
+  $('sName').value = s.school_name || '';
+  $('sLate').value = hhmm(s.late_after);
+  $('sAbsent').value = hhmm(s.absent_cutoff);
+  $('sessList').innerHTML = S.sessions.map(x => `<div class="row"><div class="grow"><b>${esc(x.name)}</b> ${x.is_current ? '<small>(current)</small>' : ''}<br><small>${esc(x.starts_on)} to ${esc(x.ends_on)}</small></div>${x.is_current ? '' : `<button class="btn sm" data-cur="${x.id}">Make current</button>`}</div>`).join('') || '<p class="muted">No sessions yet.</p>';
+  $('clsList').innerHTML = S.classes.map(c => `<div class="row"><div class="grow"><b>${esc(c.class_name)}${c.arm ? ' ' + esc(c.arm) : ''}</b> <small>${esc(c.section)}</small></div><button class="btn sm warn" data-delcls="${c.id}">Delete</button></div>`).join('') || '<p class="muted">No classes yet.</p>';
+}
+
+function fillClassSelects() {
+  const opts = '<option value="">Choose class</option>' + S.classes.map(c => `<option value="${c.id}">${esc(clsName(c.id))}</option>`).join('');
+  const keep = $('fClass').value;
+  $('fClass').innerHTML = '<option value="">All classes</option>' + S.classes.map(c => `<option value="${c.id}">${esc(clsName(c.id))}</option>`).join('');
+  $('fClass').value = keep;
+  $('sClass').innerHTML = opts;
+  $('sSess').innerHTML = S.sessions.map(x => `<option value="${x.id}">${esc(x.name)}${x.is_current ? ' (current)' : ''}</option>`).join('');
+}
+
+function renderStudents() {
+  const cf = $('fClass').value, q = $('fSearch').value.trim().toLowerCase();
+  const list = S.students.filter(s => (!cf || s.class_id === cf) &&
+    (!q || (fullName(s) + ' ' + s.student_number).toLowerCase().includes(q)));
+  $('stuCount').textContent = list.length + ' student(s)' + (list.length > 300 ? ' (showing the first 300, use search or class filter)' : '');
+  $('stuList').innerHTML = list.slice(0, 300).map(s => `<div class="row">
+    <input type="checkbox" class="pick" value="${s.id}" aria-label="Select ${esc(fullName(s))}">
+    <div class="grow"><b>${esc(fullName(s))}</b><br><small>${esc(s.student_number)}, ${esc(clsName(s.class_id))}${s.status !== 'active' ? ', ' + esc(s.status) : ''}, ${S.qr.has(s.id) ? 'QR issued' : 'no QR yet'}</small></div>
+    <button class="btn sm" data-a="edit" data-id="${s.id}">Edit</button>
+    <button class="btn sm" data-a="g" data-id="${s.id}">Guardians</button>
+    ${S.qr.has(s.id) ? `<button class="btn sm warn" data-a="rev" data-id="${s.id}">Revoke QR</button>` : ''}
+  </div>`).join('') || '<p class="muted">No students found. Tap Add student.</p>';
+}
+$('fClass').onchange = renderStudents;
+$('fSearch').oninput = renderStudents;
+
+// ---------- setup actions ----------
+$('saveSettings').onclick = async () => {
+  if (!val('sName')) return toast('Enter the school name.', true);
+  const { error } = await sb.from('school_settings').update({
+    school_name: val('sName'), late_after: $('sLate').value || '08:00', absent_cutoff: $('sAbsent').value || '10:00'
+  }).eq('id', 1);
+  if (error) return toast(niceError(error), true);
+  toast('School details saved.'); loadAll();
+};
+
+$('addSess').onclick = async () => {
+  if (!val('ssName') || !$('ssStart').value || !$('ssEnd').value) return toast('Fill in the name and both dates.', true);
+  if ($('ssEnd').value <= $('ssStart').value) return toast('The end date must be after the start date.', true);
+  const first = S.sessions.length === 0;
+  const { error } = await sb.from('academic_sessions').insert({ name: val('ssName'), starts_on: $('ssStart').value, ends_on: $('ssEnd').value, is_current: first });
+  if (error) return toast(niceError(error), true);
+  $('ssName').value = ''; toast('Session added.'); loadAll();
+};
+
+$('sessList').onclick = async e => {
+  const id = e.target.dataset.cur; if (!id) return;
+  let r = await sb.from('academic_sessions').update({ is_current: false }).eq('is_current', true);
+  if (!r.error) r = await sb.from('academic_sessions').update({ is_current: true }).eq('id', id);
+  if (r.error) return toast(niceError(r.error), true);
+  toast('Current session changed.'); loadAll();
+};
+
+$('addCls').onclick = async () => {
+  if (!val('cName')) return toast('Enter the class name.', true);
+  const { error } = await sb.from('school_classes').insert({ section: $('cSection').value, class_name: val('cName'), arm: val('cArm') });
+  if (error) return toast(niceError(error), true);
+  $('cName').value = ''; $('cArm').value = ''; toast('Class added.'); loadAll();
+};
+
+$('clsList').onclick = async e => {
+  const id = e.target.dataset.delcls; if (!id) return;
+  if (!confirm('Delete ' + clsName(id) + '? This only works if no student is in it.')) return;
+  const { error } = await sb.from('school_classes').delete().eq('id', id);
+  if (error) return toast(niceError(error), true);
+  toast('Class deleted.'); loadAll();
+};
+
+// ---------- student add / edit ----------
+function openStudent(id) {
+  const s = id ? S.stuMap.get(id) : null;
+  if (!s && !S.classes.length) return toast('Add a class first (Setup tab).', true);
+  if (!s && !S.sessions.length) return toast('Add an academic session first (Setup tab).', true);
+  $('stuTitle').textContent = s ? 'Edit student' : 'Add student';
+  $('sId').value = s ? s.id : '';
+  $('sNo').value = s ? s.student_number : '';
+  $('sFirst').value = s ? s.first_name : '';
+  $('sMid').value = s ? (s.middle_name || '') : '';
+  $('sLast').value = s ? s.last_name : '';
+  $('sClass').value = s ? s.class_id : ($('fClass').value || '');
+  const cur = S.sessions.find(x => x.is_current) || S.sessions[0];
+  $('sSess').value = s ? s.session_id : (cur ? cur.id : '');
+  $('sGender').value = s ? (s.gender || '') : '';
+  $('sStatus').value = s ? s.status : 'active';
+  $('stuDlg').showModal();
+}
+$('addStu').onclick = () => openStudent(null);
+$('closeStu').onclick = () => $('stuDlg').close();
+
+$('saveStu').onclick = async () => {
+  const row = {
+    student_number: val('sNo'), first_name: val('sFirst'), middle_name: val('sMid') || null, last_name: val('sLast'),
+    class_id: $('sClass').value, session_id: $('sSess').value, gender: $('sGender').value || null, status: $('sStatus').value
+  };
+  if (!row.student_number || !row.first_name || !row.last_name || !row.class_id || !row.session_id)
+    return toast('Fill in the ID number, first name, last name, class and session.', true);
+  $('saveStu').disabled = true;
+  const id = $('sId').value;
+  const { error } = id ? await sb.from('students').update(row).eq('id', id) : await sb.from('students').insert(row);
+  $('saveStu').disabled = false;
+  if (error) return toast(niceError(error), true);
+  $('stuDlg').close(); toast('Student saved.'); loadAll();
+};
+
+// ---------- list buttons ----------
+$('stuList').onclick = async e => {
+  const a = e.target.dataset.a, id = e.target.dataset.id; if (!a) return;
+  if (a === 'edit') openStudent(id);
+  if (a === 'g') openGuardians(id);
+  if (a === 'rev') {
+    const reason = prompt('Why are you revoking this QR code? (required)');
+    if (!reason || reason.trim().length < 3) return toast('A reason is required.', true);
+    const { error } = await sb.rpc('revoke_qr_token', { p_student_id: id, p_reason: reason });
+    if (error) return toast(niceError(error), true);
+    toast('QR code revoked.'); loadAll();
+  }
+};
+const picks = () => [...document.querySelectorAll('.pick')];
+$('selAll').onclick = () => picks().forEach(c => c.checked = true);
+$('selNone').onclick = () => picks().forEach(c => c.checked = false);
+$('selNoQr').onclick = () => picks().forEach(c => c.checked = !S.qr.has(c.value) && S.stuMap.get(c.value).status === 'active');
+
+// ---------- guardians ----------
+async function openGuardians(studentId) {
+  G.student = S.stuMap.get(studentId);
+  $('gTitle').textContent = 'Guardians of ' + fullName(G.student);
+  $('gName').value = ''; $('gPhone').value = ''; $('gEmail').value = ''; $('gSearch').value = ''; $('gResults').innerHTML = '';
+  $('gDlg').showModal();
+  await refreshLinks();
+}
+async function refreshLinks() {
+  const { data, error } = await sb.from('student_guardians')
+    .select('relationship,is_primary,guardian:guardians(id,full_name,phone,email)').eq('student_id', G.student.id);
+  if (error) return toast(niceError(error), true);
+  G.links = data;
+  $('gLinks').innerHTML = data.map(l => `<div class="row"><div class="grow"><b>${esc(l.guardian.full_name)}</b> <small>(${esc(l.relationship)}${l.is_primary ? ', primary' : ''})</small><br><small>${esc(l.guardian.phone || 'no phone')}${l.guardian.email ? ', ' + esc(l.guardian.email) : ''}</small></div><button class="btn sm warn" data-unlink="${l.guardian.id}">Unlink</button></div>`).join('') || '<p class="muted">No guardian linked yet.</p>';
+}
+async function linkGuardian(gid, rel) {
+  const { error } = await sb.from('student_guardians').insert({ student_id: G.student.id, guardian_id: gid, relationship: rel, is_primary: G.links.length === 0 });
+  return error;
+}
+$('gAdd').onclick = async () => {
+  const name = val('gName'), phone = normPhone($('gPhone').value), email = val('gEmail') || null;
+  if (!name) return toast('Enter the guardian name.', true);
+  if (phone === false) return toast('Enter the phone like 08012345678.', true);
+  if (!phone && !email) return toast('Enter a phone number or an email.', true);
+  if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return toast('That email does not look right.', true);
+  const { data: g, error } = await sb.from('guardians').insert({ full_name: name, phone, whatsapp_number: phone, email }).select('id').single();
+  if (error) return toast(niceError(error), true);
+  const err2 = await linkGuardian(g.id, $('gRel').value);
+  if (err2) { await sb.from('guardians').delete().eq('id', g.id); return toast(niceError(err2), true); }
+  $('gName').value = ''; $('gPhone').value = ''; $('gEmail').value = '';
+  toast('Guardian added.'); await refreshLinks(); S.guardians++;
+};
+$('gFind').onclick = async () => {
+  const q = val('gSearch').replace(/[,()%*\\]/g, '');
+  if (q.length < 2) return toast('Type at least 2 characters.', true);
+  const { data, error } = await sb.from('guardians').select('id,full_name,phone').or(`full_name.ilike.%${q}%,phone.ilike.%${q}%`).limit(10);
+  if (error) return toast(niceError(error), true);
+  const linked = new Set(G.links.map(l => l.guardian.id));
+  $('gResults').innerHTML = data.filter(g => !linked.has(g.id)).map(g => `<div class="row"><div class="grow"><b>${esc(g.full_name)}</b><br><small>${esc(g.phone || 'no phone')}</small></div><button class="btn sm" data-link="${g.id}">Link</button></div>`).join('') || '<p class="muted">No matching guardian.</p>';
+};
+$('gDlg').onclick = async e => {
+  const unlink = e.target.dataset.unlink, link = e.target.dataset.link;
+  if (unlink) {
+    if (!confirm('Remove this guardian from the student?')) return;
+    const { error } = await sb.from('student_guardians').delete().eq('student_id', G.student.id).eq('guardian_id', unlink);
+    if (error) return toast(niceError(error), true);
+    await refreshLinks();
+  }
+  if (link) {
+    const err = await linkGuardian(link, $('gRel').value);
+    if (err) return toast(niceError(err), true);
+    $('gResults').innerHTML = ''; toast('Guardian linked.'); await refreshLinks();
+  }
+};
+$('gClose').onclick = () => $('gDlg').close();
+
+// ---------- QR codes and printing ----------
+function buildCards(rows) {
+  const area = $('printArea'); area.innerHTML = '';
+  const school = S.settings ? S.settings.school_name : '';
+  rows.forEach(r => {
+    const s = S.stuMap.get(r.out_student_id); if (!s) return;
+    const d = document.createElement('div'); d.className = 'idcard';
+    d.innerHTML = `<div class="qr"></div><div class="info"><b>${esc(school)}</b><div class="nm">${esc(fullName(s))}</div><div>${esc(s.student_number)}</div><div>${esc(clsName(s.class_id))}</div></div>`;
+    area.appendChild(d);
+    new QRCode(d.querySelector('.qr'), { text: 'SQAR1:' + r.out_token, width: 240, height: 240, correctLevel: QRCode.CorrectLevel.M });
+  });
+}
+
+$('issueSel').onclick = async () => {
+  const ids = picks().filter(c => c.checked).map(c => c.value);
+  if (!ids.length) return toast('Tick at least one student first.', true);
+  const have = ids.filter(i => S.qr.has(i)).length;
+  if (have && !confirm(have + ' selected student(s) already have a QR code. New codes will STOP the old ones working. Continue?')) return;
+  $('issueSel').disabled = true;
+  let rows = [];
+  try {
+    for (let i = 0; i < ids.length; i += 200) {
+      const { data, error } = await sb.rpc('issue_qr_tokens', { p_student_ids: ids.slice(i, i + 200), p_reason: 'issued from dashboard' });
+      if (error) throw error;
+      rows = rows.concat(data);
+    }
+  } catch (e) { toast(niceError(e), true); }
+  $('issueSel').disabled = false;
+  if (!rows.length) return toast('No QR codes were issued. Only active students get codes.', true);
+  buildCards(rows);
+  $('printMsg').textContent = rows.length + ' QR card(s) ready.';
+  $('printBar').classList.remove('hide');
+  await loadAll();
+  setTimeout(() => window.print(), 600);
+};
+$('printAgain').onclick = () => window.print();
+$('clearCards').onclick = () => { $('printArea').innerHTML = ''; $('printBar').classList.add('hide'); };
+
+await loadAll();
+})();
+</script>
+</body>
+</html>
