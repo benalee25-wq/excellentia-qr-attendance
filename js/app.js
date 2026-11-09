@@ -1,6 +1,6 @@
 // Shared helpers used by every page.
 // NOTE: checks here only decide what the screen shows. Real protection is
-// the database (Row Level Security + secure functions) from Phase 1 and 2.
+// the database (Row Level Security + secure functions) from Phases 1-3.
 const cfg = window.APP_CONFIG || {};
 const configOk = cfg.SUPABASE_URL && cfg.SUPABASE_ANON_KEY &&
   !cfg.SUPABASE_URL.includes('PASTE') && !cfg.SUPABASE_ANON_KEY.includes('PASTE');
@@ -40,14 +40,15 @@ async function getProfile() {
   const { data: { session } } = await sb.auth.getSession();
   if (!session) return null;
   const { data, error } = await sb.from('user_profiles')
-    .select('full_name,role,is_active').eq('id', session.user.id).maybeSingle();
+    .select('id,full_name,role,is_active').eq('id', session.user.id).maybeSingle();
   return error ? null : data;
 }
 
-// Call at the top of an admin page. root = path back to the site root.
-async function requireAdmin(root) {
+// Call at the top of a protected page. root = path back to the site root.
+// roles = list of roles allowed on this page, e.g. ['teacher','admin'].
+async function requireRole(root, roles) {
   const p = await getProfile();
-  if (!p || !p.is_active || p.role !== 'admin') {
+  if (!p || !p.is_active || !roles.includes(p.role)) {
     location.href = root + 'index.html';
     return null;
   }
@@ -57,3 +58,4 @@ async function requireAdmin(root) {
   if (out) out.onclick = async () => { await sb.auth.signOut(); location.href = root + 'index.html'; };
   return p;
 }
+const requireAdmin = root => requireRole(root, ['admin']);
