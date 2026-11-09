@@ -3,270 +3,94 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Teacher on Duty – QR Attendance</title>
-<link rel="stylesheet" href="../css/styles.css">
+<meta name="theme-color" content="#0b5039">
+<title>Log in – QR Attendance</title>
 <style>
-main{max-width:560px}
-.modebar{display:grid;grid-template-columns:1fr 1fr;gap:.6rem}
-.mode{min-height:70px;border:3px solid transparent;border-radius:12px;font:inherit;font-size:1.2rem;font-weight:800;color:#fff;cursor:pointer;opacity:.55}
-.mode.arr{background:#0f6b4f}.mode.dep{background:#1f4e8c}
-.mode.on{opacity:1;border-color:#e8a317;box-shadow:0 0 0 3px #e8a317}
-.modelabel{text-align:center;font-weight:800;font-size:1.15rem;margin:.7rem 0}
-.viewport{position:relative;width:100%;max-width:420px;aspect-ratio:1;margin:0 auto;background:#12263a;border-radius:14px;overflow:hidden;border:6px solid #9fb1ab}
-.viewport.arr{border-color:#0f6b4f}.viewport.dep{border-color:#1f4e8c}
-.viewport video{width:100%;height:100%;object-fit:cover}
-.viewport .hint{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;text-align:center;padding:1rem}
-.big{width:100%;min-height:58px;font-size:1.1rem;margin-top:.7rem}
-.result{border-radius:12px;padding:1rem;margin-top:.8rem;text-align:center}
-.result h3{margin:0;font-size:1.3rem}
-.result .nm{font-size:1.5rem;font-weight:800;margin:.3rem 0}
-.result.ok{background:#dff5ea;border:3px solid #0f6b4f;color:#0b3d2c}
-.result.warn{background:#fff3d1;border:3px solid #e8a317;color:#5a3d00}
-.result.bad{background:#fde7e4;border:3px solid #b42318;color:#7a1a12}
-.badge{display:inline-block;padding:.05rem .5rem;border-radius:99px;font-size:.78rem;background:#e3ebe8}
-.badge.late{background:#fff3d1;color:#5a3d00}
-details summary{font-weight:700;cursor:pointer;padding:.2rem 0}
+*{box-sizing:border-box}
+html,body{min-height:100%}
+body{margin:0;font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#12263a;
+  background:
+    linear-gradient(90deg,transparent 0,transparent 46px,rgba(232,163,23,.7) 46px,rgba(232,163,23,.7) 48px,transparent 48px),
+    repeating-linear-gradient(180deg,transparent 0,transparent 31px,rgba(255,255,255,.13) 31px,rgba(255,255,255,.13) 32px),
+    linear-gradient(160deg,#0b5039,#0f6b4f 60%,#12806a);
+  background-attachment:fixed}
+.wrap{width:calc(100% - 4.2rem);margin:9vh 1rem 2rem 3.4rem}
+@media(min-width:600px){.wrap{width:min(420px,92%);margin:12vh auto 2rem}}
+h1{color:#fff;font-size:1.75rem;line-height:1.15;margin:0 0 .3rem}
+.tag{color:#f6c453;margin:0 0 1.2rem;font-weight:600}
+.card{background:#fff;border-radius:14px;padding:1.2rem;box-shadow:0 12px 32px rgba(0,0,0,.28)}
+label{display:block;font-weight:600;margin:.8rem 0 .25rem}
+label:first-child{margin-top:0}
+input{width:100%;padding:.8rem;border:1px solid #9fb1ab;border-radius:9px;font:inherit;color:#12263a;background:#fff}
+input:focus,button:focus-visible{outline:3px solid #e8a317;outline-offset:1px}
+button{width:100%;margin-top:1.1rem;padding:.9rem;border:0;border-radius:9px;background:#0f6b4f;color:#fff;font:inherit;font-weight:700;cursor:pointer}
+button:hover{background:#0b5039}button:disabled{opacity:.6}
+.err{background:#fde7e4;color:#b42318;padding:.7rem;border-radius:9px;margin:.9rem 0 0}
+.hide{display:none}
+.foot{color:rgba(255,255,255,.8);font-size:.85rem;margin-top:1rem}
 </style>
 </head>
 <body>
-<header class="top">
-  <b>Teacher on Duty</b>
-  <span><span id="who"></span> <button class="btn sm ghost" id="logoutBtn">Log out</button></span>
-</header>
-
-<main>
-  <section class="panel">
-    <div class="modebar">
-      <button class="mode arr" id="mArr">ARRIVAL</button>
-      <button class="mode dep" id="mDep">DEPARTURE</button>
-    </div>
-    <p class="modelabel" id="modeLabel">Choose ARRIVAL or DEPARTURE first</p>
-    <div class="viewport" id="viewport">
-      <video id="vid" playsinline muted></video>
-      <div class="hint" id="hint">Camera is off</div>
-    </div>
-    <button class="btn big" id="camBtn" disabled>Start camera</button>
-    <div id="result" class="result hide" role="status" aria-live="polite"></div>
-  </section>
-
-  <section class="panel">
-    <h3>Today</h3>
-    <p id="duty" class="muted"></p>
-    <div class="stats" style="grid-template-columns:1fr 1fr">
-      <div class="stat"><b id="cArr">0</b>Arrivals</div>
-      <div class="stat"><b id="cDep">0</b>Departures</div>
-    </div>
-    <h3 style="margin-top:1rem">Recent attendance</h3>
-    <div id="today"></div>
-  </section>
-
-  <details class="panel">
-    <summary>Manual attendance entry</summary>
-    <p class="muted">Use only when a card cannot be scanned. A reason is required and the entry is audited.</p>
-    <div class="bar"><input id="mSearch" placeholder="Student name or number" aria-label="Search student"><button class="btn sm" id="mFind">Search</button></div>
-    <div id="mResults"></div>
-    <p id="mPicked" class="muted"></p>
-    <label for="mMode">Action</label>
-    <select id="mMode"><option value="arrival">Arrival</option><option value="departure">Departure</option></select>
-    <label for="mReason">Reason</label><input id="mReason" placeholder="e.g. Card damaged">
-    <p><button class="btn" id="mSubmit">Record manually</button></p>
-  </details>
-
-  <details class="panel">
-    <summary>Report a scanning problem</summary>
-    <label for="pNo">Student number (optional)</label><input id="pNo">
-    <label for="pMsg">What went wrong?</label><input id="pMsg" placeholder="e.g. Card will not scan">
-    <p><button class="btn" id="pSend">Send report</button></p>
-  </details>
-</main>
-
-<div id="toast"></div>
+<div class="wrap">
+  <h1>QR Attendance Register</h1>
+  <p class="tag">Scan. Record. Notify. Protect.</p>
+  <div class="card">
+    <form id="f">
+      <label for="email">Email</label>
+      <input id="email" type="email" autocomplete="username" required>
+      <label for="pw">Password</label>
+      <input id="pw" type="password" autocomplete="current-password" required>
+      <p id="msg" class="err hide" role="alert"></p>
+      <button id="go">Log in</button>
+    </form>
+  </div>
+  <p class="foot">For authorised school staff only. Version P3</p>
+</div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
-<script src="../config.js"></script>
-<script src="../js/app.js"></script>
+<script src="config.js"></script>
 <script>
-(async () => {
-const me = await requireRole('../', ['teacher', 'admin']);
-if (!me) return;
-
 const $ = id => document.getElementById(id);
-const TZ = 'Africa/Lagos';
-const fmt = iso => iso ? new Date(iso).toLocaleTimeString('en-GB', { timeZone: TZ, hour: '2-digit', minute: '2-digit', hour12: true }) : '—';
-const todayStr = () => new Date().toLocaleDateString('en-CA', { timeZone: TZ });
+function show(m) { $('msg').textContent = m; $('msg').classList.remove('hide'); }
 
-let mode = null, stream = null, timer = null, busy = false, detector = null, ac = null, lock = null;
-let last = { t: '', at: 0 }, classes = [], picked = null;
-const cv = document.createElement('canvas');
-const clsName = id => { const c = classes.find(x => x.id === id); return c ? c.class_name + (c.arm ? ' ' + c.arm : '') : ''; };
+// This page is self-contained: it needs only config.js and the Supabase script.
+const cfg = window.APP_CONFIG || {};
+const ok = !!(cfg.SUPABASE_URL && cfg.SUPABASE_ANON_KEY && !/PASTE/.test(cfg.SUPABASE_URL + cfg.SUPABASE_ANON_KEY));
+let sb = null;
+if (typeof supabase === 'undefined') show('The page could not load its scripts. Check your internet and refresh.');
+else if (!ok) show('Setup incomplete: open config.js and paste your Project URL and public key.');
+else sb = supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
 
-// ---------- mode ----------
-function setMode(m) {
-  mode = m;
-  $('mArr').classList.toggle('on', m === 'arrival');
-  $('mDep').classList.toggle('on', m === 'departure');
-  $('viewport').className = 'viewport ' + (m === 'arrival' ? 'arr' : 'dep');
-  $('modeLabel').textContent = 'MODE: ' + m.toUpperCase();
-  $('modeLabel').style.color = m === 'arrival' ? '#0f6b4f' : '#1f4e8c';
-  $('camBtn').disabled = false;
-}
-$('mArr').onclick = () => setMode('arrival');
-$('mDep').onclick = () => setMode('departure');
-
-// ---------- result panel ----------
-function feedback(good) {
-  try { navigator.vibrate && navigator.vibrate(good ? 120 : [200, 80, 200]); } catch (e) {}
-  try {
-    if (!ac) return;
-    const o = ac.createOscillator(), g = ac.createGain();
-    o.frequency.value = good ? 880 : 220; g.gain.value = 0.15;
-    o.connect(g); g.connect(ac.destination); o.start();
-    setTimeout(() => o.stop(), good ? 140 : 320);
-  } catch (e) {}
-}
-function show(cls, title, name, line1, line2) {
-  const r = $('result');
-  r.className = 'result ' + cls;
-  r.innerHTML = `<h3>${esc(title)}</h3>${name ? `<div class="nm">${esc(name)}</div>` : ''}${line1 ? `<div>${esc(line1)}</div>` : ''}${line2 ? `<small>${esc(line2)}</small>` : ''}`;
-  feedback(cls === 'ok');
-}
-function render(r) {
-  const s = r.student || {};
-  const sub = s.class ? s.class + ', ' + s.number : '';
-  if (r.ok) {
-    const arr = r.code === 'arrival';
-    show('ok', arr ? 'ARRIVED' : 'DEPARTED', s.name, (arr ? 'Arrival' : 'Departure') + ' recorded at ' + fmt(r.time) + (r.status === 'late' ? ' (LATE)' : ''), sub + ' | Parent notification: not active yet');
-  } else if (r.code === 'duplicate_arrival' || r.code === 'duplicate_departure') {
-    show('warn', 'ALREADY RECORDED', s.name, r.message + ' (at ' + fmt(r.time) + ')', sub);
-  } else {
-    show('bad', 'NOT RECORDED', s.name || '', r.message, sub);
-  }
-}
-function failure(error) {
-  const m = (error && error.message) || '';
-  if (!navigator.onLine || /fetch|network|load failed/i.test(m))
-    show('bad', 'NOT RECORDED', '', 'No internet connection.', 'This scan was NOT saved. Scan again when you are back online.');
-  else show('bad', 'NOT RECORDED', '', niceError(error), '');
+async function getProfile() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) return { profile: null };
+  const { data, error } = await sb.from('user_profiles')
+    .select('full_name,role,is_active').eq('id', session.user.id).maybeSingle();
+  return { profile: data, error };
 }
 
-// ---------- camera ----------
-async function startCam() {
-  try {
-    ac = ac || new (window.AudioContext || window.webkitAudioContext)();
-    if (ac.state === 'suspended') ac.resume();
-    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
-    $('vid').srcObject = stream; await $('vid').play();
-    $('hint').classList.add('hide');
-    if ('BarcodeDetector' in window) { try { detector = new BarcodeDetector({ formats: ['qr_code'] }); } catch (e) { detector = null; } }
-    try { if (navigator.wakeLock) lock = await navigator.wakeLock.request('screen'); } catch (e) {}
-    $('camBtn').textContent = 'Stop camera';
-    timer = setInterval(tick, 200);
-  } catch (e) {
-    show('bad', 'CAMERA PROBLEM', '', 'Allow camera access for this site in Chrome, then tap Start camera.', '');
-  }
-}
-function stopCam() {
-  clearInterval(timer); timer = null;
-  if (stream) stream.getTracks().forEach(t => t.stop());
-  stream = null; $('vid').srcObject = null; $('hint').classList.remove('hide');
-  try { if (lock) lock.release(); } catch (e) {} lock = null;
-  $('camBtn').textContent = 'Start camera';
-}
-$('camBtn').onclick = () => stream ? stopCam() : startCam();
-document.addEventListener('visibilitychange', () => { if (document.hidden && stream) stopCam(); });
-
-async function tick() {
-  const v = $('vid');
-  if (busy || !v.videoWidth) return;
-  let text = null;
-  try {
-    if (detector) {
-      const c = await detector.detect(v);
-      if (c.length) text = c[0].rawValue;
-    } else {
-      const w = Math.min(480, v.videoWidth), h = Math.round(v.videoHeight * w / v.videoWidth);
-      cv.width = w; cv.height = h;
-      const ctx = cv.getContext('2d', { willReadFrequently: true });
-      ctx.drawImage(v, 0, 0, w, h);
-      const code = jsQR(ctx.getImageData(0, 0, w, h).data, w, h, { inversionAttempts: 'dontInvert' });
-      if (code) text = code.data;
-    }
-  } catch (e) { return; }
-  if (text) handle(text);
+async function route() {
+  const { profile: p, error } = await getProfile();
+  if (error) { show('Could not read your account: ' + error.message); return; }
+  if (!p) { if ((await sb.auth.getSession()).data.session) { await sb.auth.signOut(); show('Your account has no role yet. Ask the administrator.'); } return; }
+  if (p.is_active && p.role === 'admin') { location.href = 'admin/index.html'; return; }
+  if (p.is_active && p.role === 'teacher') { location.href = 'teacher/index.html'; return; }
+  await sb.auth.signOut();
+  show(p.is_active ? 'Your ' + p.role + ' dashboard is coming in a later phase.'
+                   : 'This account is switched off. Contact the school administrator.');
 }
 
-async function handle(text) {
-  const now = Date.now();
-  if (text === last.t && now - last.at < 4000) return;   // ignore the same code for 4 seconds
-  last = { t: text, at: now };
-  if (!text.startsWith('SQAR1:')) return show('bad', 'NOT A SCHOOL CODE', '', 'This QR code does not belong to this system.', '');
-  const m = mode;                                        // the mode shown on screen at scan time
-  if (!m) return;
-  busy = true;
-  try {
-    const { data, error } = await sb.rpc('record_scan', { p_token: text, p_mode: m });
-    if (error) failure(error); else render(data);
-  } catch (e) { failure(e); }
-  busy = false;
-  loadToday();
-}
-
-// ---------- today ----------
-async function loadToday() {
-  const d = todayStr();
-  const [list, a, p, duty] = await Promise.all([
-    sb.from('attendance_records').select('arrival_at,departure_at,status,is_manual,student:students(first_name,last_name,student_number,class_id)').eq('school_date', d).order('updated_at', { ascending: false }).limit(30),
-    sb.from('attendance_records').select('id', { count: 'exact', head: true }).eq('school_date', d).not('arrival_at', 'is', null),
-    sb.from('attendance_records').select('id', { count: 'exact', head: true }).eq('school_date', d).not('departure_at', 'is', null),
-    sb.from('duty_sessions').select('started_at').eq('school_date', d).eq('teacher_id', me.id).maybeSingle()
-  ]);
-  $('cArr').textContent = a.count || 0; $('cDep').textContent = p.count || 0;
-  $('duty').textContent = duty.data ? 'Your duty session started at ' + fmt(duty.data.started_at) + '.' : 'Your duty session starts with your first scan today.';
-  if (list.error) return;
-  $('today').innerHTML = list.data.map(r => `<div class="row"><div class="grow"><b>${esc(r.student.first_name + ' ' + r.student.last_name)}</b><br><small>${esc(clsName(r.student.class_id))} | In ${fmt(r.arrival_at)} | Out ${fmt(r.departure_at)}</small></div>${r.status === 'late' ? '<span class="badge late">Late</span>' : ''}${r.is_manual ? '<span class="badge">Manual</span>' : ''}</div>`).join('') || '<p class="muted">No scans yet today.</p>';
-}
-
-// ---------- manual entry ----------
-$('mFind').onclick = async () => {
-  const q = $('mSearch').value.trim().replace(/[,()%*\\]/g, '');
-  if (q.length < 2) return toast('Type at least 2 characters.', true);
-  const { data, error } = await sb.from('students').select('id,first_name,last_name,student_number,class_id')
-    .eq('status', 'active').or(`first_name.ilike.%${q}%,last_name.ilike.%${q}%,student_number.ilike.%${q}%`).limit(8);
-  if (error) return toast(niceError(error), true);
-  $('mResults').innerHTML = data.map(s => `<div class="row"><div class="grow"><b>${esc(s.first_name + ' ' + s.last_name)}</b><br><small>${esc(s.student_number)} | ${esc(clsName(s.class_id))}</small></div><button class="btn sm" data-id="${s.id}" data-n="${esc(s.first_name + ' ' + s.last_name)}">Select</button></div>`).join('') || '<p class="muted">No matching student.</p>';
-};
-$('mResults').onclick = e => {
-  if (!e.target.dataset.id) return;
-  picked = e.target.dataset.id;
-  $('mPicked').textContent = 'Selected: ' + e.target.dataset.n;
-  $('mResults').innerHTML = '';
-};
-$('mSubmit').onclick = async () => {
-  if (!picked) return toast('Search and select a student first.', true);
-  if ($('mReason').value.trim().length < 5) return toast('Enter a reason (at least 5 characters).', true);
-  $('mSubmit').disabled = true;
-  const { data, error } = await sb.rpc('manual_attendance', { p_student_id: picked, p_mode: $('mMode').value, p_reason: $('mReason').value.trim() });
-  $('mSubmit').disabled = false;
-  if (error) failure(error); else render(data);
-  $('result').scrollIntoView({ behavior: 'smooth', block: 'center' });
-  if (!error && data.ok) { picked = null; $('mPicked').textContent = ''; $('mReason').value = ''; }
-  loadToday();
+$('f').onsubmit = async e => {
+  e.preventDefault();
+  if (!sb) return;
+  $('msg').classList.add('hide');
+  $('go').disabled = true;
+  const { error } = await sb.auth.signInWithPassword({ email: $('email').value.trim(), password: $('pw').value });
+  if (error) show('Login failed: ' + error.message);
+  else await route();
+  $('go').disabled = false;
 };
 
-// ---------- report a problem ----------
-$('pSend').onclick = async () => {
-  if ($('pMsg').value.trim().length < 3) return toast('Describe the problem.', true);
-  const { error } = await sb.rpc('report_scan_problem', { p_message: $('pMsg').value, p_student_number: $('pNo').value });
-  if (error) return toast(niceError(error), true);
-  $('pMsg').value = ''; $('pNo').value = ''; toast('Problem reported. Thank you.');
-};
-
-// ---------- start ----------
-const c = await sb.from('school_classes').select('id,class_name,arm');
-classes = c.data || [];
-loadToday();
-setInterval(() => { if (!document.hidden) loadToday(); }, 30000);
-})();
+if (sb) route();
 </script>
 </body>
 </html>
