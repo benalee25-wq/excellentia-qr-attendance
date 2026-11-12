@@ -135,7 +135,7 @@ function render(r) {
   const sub = s.class ? s.class + ', ' + s.number : '';
   if (r.ok) {
     const arr = r.code === 'arrival';
-    show('ok', arr ? 'ARRIVED' : 'DEPARTED', s.name, (arr ? 'Arrival' : 'Departure') + ' recorded at ' + fmt(r.time) + (r.status === 'late' ? ' (LATE)' : ''), sub + ' | Parent notification: not active yet');
+    show('ok', arr ? 'ARRIVED' : 'DEPARTED', s.name, (arr ? 'Arrival' : 'Departure') + ' recorded at ' + fmt(r.time) + (r.status === 'late' ? ' (LATE)' : ''), sub + ' | ' + (r.notify_queued > 0 ? 'Parent notice queued (' + r.notify_queued + ')' : 'No parent email set up for this student'));
   } else if (r.code === 'duplicate_arrival' || r.code === 'duplicate_departure') {
     show('warn', 'ALREADY RECORDED', s.name, r.message + ' (at ' + fmt(r.time) + ')', sub);
   } else {
