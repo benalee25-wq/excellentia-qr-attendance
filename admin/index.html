@@ -15,6 +15,7 @@
   <button data-tab="overview" class="on">Overview</button>
   <button data-tab="students">Students</button>
   <button data-tab="setup">Setup</button>
+  <button data-tab="notify">Notices</button>
 </nav>
 
 <main>
@@ -66,6 +67,15 @@
     </div>
 
     <div class="panel">
+      <h3>Parent notification channels</h3>
+      <p class="muted">SMS and WhatsApp cost money for every message. Email is free to start. Parents are only messaged on channels that are switched on here and ticked for them.</p>
+      <label><input type="checkbox" id="chEmail"> Email</label>
+      <label><input type="checkbox" id="chSms"> SMS</label>
+      <label><input type="checkbox" id="chWa"> WhatsApp</label>
+      <p><button class="btn" id="saveChannels">Save channels</button></p>
+    </div>
+
+    <div class="panel">
       <h3>Academic sessions</h3>
       <div id="sessList"></div>
       <label for="ssName">New session name (e.g. 2026/2027)</label><input id="ssName">
@@ -87,6 +97,15 @@
       <label for="cArm">Arm (e.g. A, Gold. Leave empty if none)</label><input id="cArm">
       <p><button class="btn" id="addCls">Add class</button></p>
     </div>
+  </section>
+
+  <!-- ============ NOTIFICATIONS ============ -->
+  <section id="notify" class="tab hide">
+    <h2>Parent notifications</h2>
+    <p class="muted">"Accepted" means the email provider took the message. It does not prove the parent opened it.</p>
+    <div class="stats" id="nStats" style="grid-template-columns:repeat(3,1fr)"></div>
+    <div class="bar"><button class="btn sm" id="nRefresh">Refresh</button></div>
+    <div class="panel" id="nList"></div>
   </section>
 </main>
 
@@ -127,6 +146,12 @@
     <div><label for="gPhone">Phone (WhatsApp and SMS)</label><input id="gPhone" type="tel" placeholder="08012345678"></div>
   </div>
   <label for="gEmail">Email (optional)</label><input id="gEmail" type="email">
+  <label>Send notices by</label>
+  <div class="bar">
+    <label><input type="checkbox" id="gOnEmail" checked> Email</label>
+    <label><input type="checkbox" id="gOnSms" checked> SMS</label>
+    <label><input type="checkbox" id="gOnWa" checked> WhatsApp</label>
+  </div>
   <p><button class="btn" id="gAdd">Add and link guardian</button></p>
 
   <h3>Link an existing guardian</h3>
@@ -202,6 +227,7 @@ $('tabs').onclick = e => {
   const t = e.target.dataset.tab; if (!t) return;
   document.querySelectorAll('.tab').forEach(x => x.classList.toggle('hide', x.id !== t));
   document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === t));
+  if (t === 'notify') loadNotifs();
 };
 
 // ---------- render ----------
@@ -228,6 +254,8 @@ function renderSetup() {
   $('sName').value = s.school_name || '';
   $('sLate').value = hhmm(s.late_after);
   $('sAbsent').value = hhmm(s.absent_cutoff);
+  const ch = s.enabled_channels || ['email'];
+  $('chEmail').checked = ch.includes('email'); $('chSms').checked = ch.includes('sms'); $('chWa').checked = ch.includes('whatsapp');
   $('sessList').innerHTML = S.sessions.map(x => `<div class="row"><div class="grow"><b>${esc(x.name)}</b> ${x.is_current ? '<small>(current)</small>' : ''}<br><small>${esc(x.starts_on)} to ${esc(x.ends_on)}</small></div>${x.is_current ? '' : `<button class="btn sm" data-cur="${x.id}">Make current</button>`}</div>`).join('') || '<p class="muted">No sessions yet.</p>';
   $('clsList').innerHTML = S.classes.map(c => `<div class="row"><div class="grow"><b>${esc(c.class_name)}${c.arm ? ' ' + esc(c.arm) : ''}</b> <small>${esc(c.section)}</small></div><button class="btn sm warn" data-delcls="${c.id}">Delete</button></div>`).join('') || '<p class="muted">No classes yet.</p>';
 }
@@ -378,7 +406,7 @@ $('gAdd').onclick = async () => {
   if (phone === false) return toast('Enter the phone like 08012345678.', true);
   if (!phone && !email) return toast('Enter a phone number or an email.', true);
   if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return toast('That email does not look right.', true);
-  const { data: g, error } = await sb.from('guardians').insert({ full_name: name, phone, whatsapp_number: phone, email }).select('id').single();
+  const { data: g, error } = await sb.from('guardians').insert({ full_name: name, phone, whatsapp_number: phone, email, notify_email: $('gOnEmail').checked, notify_sms: $('gOnSms').checked, notify_whatsapp: $('gOnWa').checked }).select('id').single();
   if (error) return toast(niceError(error), true);
   const err2 = await linkGuardian(g.id, $('gRel').value);
   if (err2) { await sb.from('guardians').delete().eq('id', g.id); return toast(niceError(err2), true); }
@@ -447,8 +475,41 @@ $('issueSel').onclick = async () => {
 $('printAgain').onclick = () => window.print();
 $('clearCards').onclick = () => { $('printArea').innerHTML = ''; $('printBar').classList.add('hide'); };
 
+// ---------- channel switches ----------
+$('saveChannels').onclick = async () => {
+  const list = [];
+  if ($('chEmail').checked) list.push('email');
+  if ($('chSms').checked) list.push('sms');
+  if ($('chWa').checked) list.push('whatsapp');
+  if (!list.length && !confirm('No channel is switched on, so parents will not be notified. Continue?')) return;
+  const { error } = await sb.from('school_settings').update({ enabled_channels: list }).eq('id', 1);
+  if (error) return toast(niceError(error), true);
+  toast('Channels saved. They apply to new scans only.'); loadAll();
+};
+
+// ---------- notifications ----------
+async function loadNotifs() {
+  const cnt = st => sb.from('notification_logs').select('id', { count: 'exact', head: true }).in('status', st);
+  const [list, p, a, f] = await Promise.all([
+    sb.from('notification_logs').select('id,event,channel,status,attempts,last_error,created_at,student:students(first_name,last_name),guardian:guardians(full_name,email,phone)').order('created_at', { ascending: false }).limit(50),
+    cnt(['pending', 'processing']), cnt(['accepted', 'delivered', 'read']), cnt(['failed'])
+  ]);
+  if (list.error) return toast(niceError(list.error), true);
+  $('nStats').innerHTML = [['Waiting', p.count || 0], ['Accepted', a.count || 0], ['Failed', f.count || 0]].map(([l, n]) => `<div class="stat"><b>${n}</b>${l}</div>`).join('');
+  const when = iso => new Date(iso).toLocaleString('en-GB', { timeZone: 'Africa/Lagos', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true });
+  $('nList').innerHTML = list.data.map(n => `<div class="row"><div class="grow"><b>${esc(n.student.first_name + ' ' + n.student.last_name)}</b> <small>${esc(n.event)} | ${esc(n.channel)}</small><br><small>To ${esc(n.guardian.full_name)} (${esc(n.channel === 'email' ? (n.guardian.email || '') : (n.guardian.phone || ''))}) | ${esc(when(n.created_at))} | ${esc(n.status)}, tries ${n.attempts}</small>${n.last_error ? `<br><small style="color:#b42318">${esc(n.last_error)}</small>` : ''}</div>${n.status === 'failed' ? `<button class="btn sm" data-resend="${n.id}">Resend</button>` : ''}</div>`).join('') || '<p class="muted">No notifications yet.</p>';
+}
+$('nRefresh').onclick = loadNotifs;
+$('nList').onclick = async e => {
+  const id = e.target.dataset.resend; if (!id) return;
+  const { error } = await sb.rpc('resend_notification', { p_id: id });
+  if (error) return toast(niceError(error), true);
+  toast('Queued again. It will be sent within a minute.'); loadNotifs();
+};
+
 await loadAll();
 })();
 </script>
 </body>
 </html>
+
