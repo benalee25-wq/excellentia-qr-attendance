@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>School Management – QR Attendance</title>
+<link rel="stylesheet" href="../css/styles.css">
+<style>
+.bars .row{gap:.4rem}.bar-out{height:.9rem;background:#e3ebe8;border-radius:99px;flex:1;min-width:90px;overflow:hidden;display:flex}
+.bar-in{background:#0f6b4f;height:100%}.bar-late{background:#e8a317;height:100%}
+</style>
+</head>
+<body>
+<header class="top">
+  <b id="brand">School Management</b>
+  <span><span id="who"></span> <button class="btn sm ghost" id="logoutBtn">Log out</button></span>
+</header>
+
+<main>
+  <div class="panel">
+    <h2>Day summary</h2>
+    <div class="bar"><input id="dDay" type="date" aria-label="Day"><button class="btn sm" id="dLoad">Show</button></div>
+    <div class="stats" id="dStats"></div>
+    <p class="muted" id="dNote"></p>
+  </div>
+
+  <div class="panel">
+    <h2>Period</h2>
+    <div class="grid2">
+      <div><label for="pFrom">From</label><input id="pFrom" type="date"></div>
+      <div><label for="pTo">To</label><input id="pTo" type="date"></div>
+    </div>
+    <div class="bar"><button class="btn" id="pRun">Show period</button></div>
+    <h3>Class attendance</h3>
+    <div id="clsBox"></div>
+    <h3>Daily arrivals and late arrivals</h3>
+    <div class="bars" id="trendBox"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Attendance records</h2>
+    <div class="grid2">
+      <div><label for="fClass">Class and arm</label><select id="fClass"></select></div>
+      <div><label for="fStatus">Status</label>
+        <select id="fStatus"><option value="">All</option><option value="late">Late</option><option value="incomplete">Incomplete</option>
+        <option value="present">Present</option><option value="at school">At school</option><option value="absent">Absent</option><option value="excused">Excused</option></select></div>
+    </div>
+    <label for="fSearch">Student name or number</label><input id="fSearch" placeholder="Search">
+    <div class="bar"><button class="btn" id="run">Run report</button></div>
+    <div class="bar">
+      <button class="btn sm amber" id="xCsv">CSV</button>
+      <button class="btn sm amber" id="xXlsx">Excel</button>
+      <button class="btn sm amber" id="xPdf">PDF</button>
+    </div>
+    <p class="muted" id="count"></p>
+    <div id="results"></div>
+  </div>
+</main>
+
+<div id="toast"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+<script src="../config.js"></script>
+<script src="../js/app.js"></script>
+<script src="../js/reports.js"></script>
+<script>
+(async () => {
+const me = await requireRole('../', ['management', 'admin']);
+if (!me) return;
+const $ = id => document.getElementById(id);
+let DATA = [];
+
+$('dDay').value = lagosToday(); $('pFrom').value = monthStart(); $('pTo').value = lagosToday();
+
+const s = await sb.from('school_settings').select('school_name').eq('id', 1).maybeSingle();
+if (s.data) $('brand').textContent = s.data.school_name;
+const cl = await sb.from('school_classes').select('id,class_name,arm').order('section').order('class_name').order('arm');
+$('fClass').innerHTML = '<option value="">All classes</option>' + (cl.data || []).map(c => `<option value="${c.id}">${esc(classLabel(c))}</option>`).join('');
+
+// ---------- day summary ----------
+async function loadDay() {
+  const { data, error } = await sb.rpc('daily_summary', { p_date: $('dDay').value || null });
+  if (error) return toast(niceError(error), true);
+  const d = data[0];
+  $('dStats').innerHTML = [
+    ['Active students', d.d_total], ['Arrived', d.d_arrived], ['Late', d.d_late],
+    ['Left school', d.d_departed], ['Still at school', d.d_at_school], ['Incomplete', d.d_incomplete],
+    [d.d_after_cutoff ? 'No arrival (review)' : 'Yet to clock in', d.d_not_arrived]
+  ].map(([l, n]) => `<div class="stat"><b>${n}</b>${l}</div>`).join('');
+  $('dNote').textContent = (d.d_after_cutoff ? 'The absent review time has passed. Students with no arrival are not marked absent until an administrator reviews them. ' : '') +
+    (d.d_absent || d.d_excused ? 'Marked absent: ' + d.d_absent + ', excused: ' + d.d_excused + '.' : '');
+}
+$('dLoad').onclick = loadDay;
+
+// ---------- period: class summary and trend ----------
+async function loadPeriod() {
+  const from = $('pFrom').value, to = $('pTo').value;
+  if (!from || !to || to < from) return toast('Choose a valid period.', true);
+  const [c, t] = await Promise.all([
+    sb.rpc('class_summary', { p_from: from, p_to: to }),
+    sb.rpc('daily_trend', { p_from: from, p_to: to })
+  ]);
+  if (c.error) return toast(niceError(c.error), true);
+  if (t.error) return toast(niceError(t.error), true);
+  $('clsBox').innerHTML = c.data.map(r => `<div class="row"><div class="grow"><b>${esc(r.c_class)}</b><br><small>${r.c_students} students | arrivals ${r.c_arrivals} | late ${r.c_late} | incomplete ${r.c_incomplete}</small></div><b>${r.c_rate === null ? '-' : r.c_rate + '%'}</b></div>`).join('') || '<p class="muted">No classes yet.</p>';
+  const max = Math.max(1, ...t.data.map(x => x.t_arrivals));
+  $('trendBox').innerHTML = t.data.map(x => `<div class="row"><small style="width:5.5rem">${esc(x.t_date)}</small><div class="bar-out"><div class="bar-in" style="width:${(x.t_arrivals - x.t_late) / max * 100}%"></div><div class="bar-late" style="width:${x.t_late / max * 100}%"></div></div><small>${x.t_arrivals} (${x.t_late} late)</small></div>`).join('') || '<p class="muted">No attendance in this period.</p>';
+}
+$('pRun').onclick = loadPeriod;
+
+// ---------- records and exports ----------
+$('run').onclick = async () => {
+  const f = { from: $('pFrom').value, to: $('pTo').value, cls: $('fClass').value, q: $('fSearch').value.trim().replace(/[%_\\]/g, ''), status: $('fStatus').value };
+  if (!f.from || !f.to) return toast('Choose the period dates first.', true);
+  $('run').disabled = true; $('count').textContent = 'Loading...';
+  try { DATA = await fetchReport(f); } catch (e) { DATA = []; toast(niceError(e), true); }
+  $('run').disabled = false;
+  $('count').textContent = DATA.length + ' record(s)';
+  renderReport($('results'), DATA, { fix: false });
+};
+const fname = () => 'attendance_' + $('pFrom').value + '_to_' + $('pTo').value;
+const need = () => { if (!DATA.length) { toast('Run the report first. There is nothing to export.', true); return false; } return true; };
+$('xCsv').onclick = () => need() && exportCSV(DATA, fname());
+$('xXlsx').onclick = () => need() && exportXLSX(DATA, fname());
+$('xPdf').onclick = () => need() && exportPDF(DATA, fname(), 'Attendance report', $('pFrom').value + ' to ' + $('pTo').value + ' | ' + DATA.length + ' records');
+
+loadDay(); loadPeriod();
+})();
+</script>
+</body>
+</html>
