@@ -16,11 +16,15 @@
   <button data-tab="students">Students</button>
   <button data-tab="setup">Setup</button>
   <button data-tab="notify">Notices</button>
+  <a href="reports.html" style="flex:1;text-align:center;padding:.85rem .4rem;font-weight:600;color:#52665f;text-decoration:none">Reports</a>
 </nav>
 
 <main>
   <!-- ============ OVERVIEW ============ -->
   <section id="overview" class="tab">
+    <h2>Today</h2>
+    <div class="stats" id="todayBox"></div>
+    <p class="muted" id="todayNote"></p>
     <h2>Overview</h2>
     <div class="stats" id="stats"></div>
     <div id="todo"></div>
@@ -475,6 +479,24 @@ $('issueSel').onclick = async () => {
 $('printAgain').onclick = () => window.print();
 $('clearCards').onclick = () => { $('printArea').innerHTML = ''; $('printBar').classList.add('hide'); };
 
+// ---------- today numbers ----------
+async function loadTodayBox() {
+  const [r, ok, bad, wait] = await Promise.all([
+    sb.rpc('daily_summary', { p_date: null }),
+    ...['accepted,delivered,read', 'failed', 'pending,processing'].map(st =>
+      sb.from('notification_logs').select('id', { count: 'exact', head: true })
+        .in('status', st.split(',')).gte('created_at', new Date(new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Lagos' }) + 'T00:00:00+01:00').toISOString()))
+  ]);
+  if (r.error) return toast(niceError(r.error), true);
+  const d = r.data[0];
+  $('todayBox').innerHTML = [
+    ['Students', d.d_total], ['Present today', d.d_arrived], [d.d_after_cutoff ? 'No arrival (review)' : 'Yet to clock in', d.d_not_arrived],
+    ['Late arrivals', d.d_late], ['Still at school', d.d_at_school], ['Notices sent', ok.count || 0],
+    ['Notices failed', bad.count || 0], ['Notices waiting', wait.count || 0]
+  ].map(([l, n]) => `<div class="stat"><b>${n}</b>${l}</div>`).join('');
+  $('todayNote').textContent = d.d_after_cutoff ? 'The absent review time has passed. Open Reports to review students with no record. Nobody is marked absent automatically.' : '';
+}
+
 // ---------- channel switches ----------
 $('saveChannels').onclick = async () => {
   const list = [];
@@ -508,8 +530,8 @@ $('nList').onclick = async e => {
 };
 
 await loadAll();
+loadTodayBox();
 })();
 </script>
 </body>
 </html>
-
