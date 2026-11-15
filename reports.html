@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Reports – QR Attendance</title>
+<link rel="stylesheet" href="../css/styles.css">
+</head>
+<body>
+<header class="top">
+  <b>Attendance reports</b>
+  <span><a class="btn sm ghost" href="index.html" style="text-decoration:none">Dashboard</a> <button class="btn sm ghost" id="logoutBtn">Log out</button></span>
+</header>
+
+<main>
+  <div class="panel">
+    <h3>Find records</h3>
+    <div class="grid2">
+      <div><label for="fFrom">From</label><input id="fFrom" type="date"></div>
+      <div><label for="fTo">To</label><input id="fTo" type="date"></div>
+    </div>
+    <div class="grid2">
+      <div><label for="fClass">Class and arm</label><select id="fClass"></select></div>
+      <div><label for="fStatus">Status</label>
+        <select id="fStatus">
+          <option value="">All</option><option value="present">Present</option><option value="late">Late</option>
+          <option value="incomplete">Incomplete</option><option value="at school">At school</option>
+          <option value="absent">Absent</option><option value="excused">Excused</option>
+        </select></div>
+    </div>
+    <div class="grid2">
+      <div><label for="fSession">Academic session</label><select id="fSession"></select></div>
+      <div><label for="fSearch">Student name or number</label><input id="fSearch" placeholder="Search"></div>
+    </div>
+    <div class="bar">
+      <button class="btn" id="run">Run report</button>
+      <button class="btn ghost" id="thisMonth" style="color:#0f6b4f">This month</button>
+    </div>
+    <div class="bar">
+      <button class="btn sm amber" id="xCsv">CSV</button>
+      <button class="btn sm amber" id="xXlsx">Excel</button>
+      <button class="btn sm amber" id="xPdf">PDF</button>
+    </div>
+    <p class="muted" id="count"></p>
+    <div id="results"></div>
+  </div>
+
+  <div class="panel">
+    <h3>Review: students with no record</h3>
+    <p class="muted">Nobody is marked absent automatically. Check each student, then mark them Absent or Excused with a reason.</p>
+    <div class="bar"><input id="rvDate" type="date"><button class="btn sm" id="rvLoad">Show students</button></div>
+    <div id="rvList"></div>
+  </div>
+</main>
+
+<dialog id="fixDlg">
+  <h3 id="fixTitle">Correct attendance</h3>
+  <p class="muted" id="fixInfo"></p>
+  <div class="grid2">
+    <div><label for="fxIn">Clock-in time</label><input id="fxIn" type="time"></div>
+    <div><label for="fxOut">Clock-out time</label><input id="fxOut" type="time"></div>
+  </div>
+  <p class="muted">Leave a time empty to keep it as it is. Times are in Nigerian time.</p>
+  <label for="fxStatus">Status</label>
+  <select id="fxStatus">
+    <option value="">Keep / work out from clock-in</option><option value="present">Present</option>
+    <option value="late">Late</option><option value="excused">Excused</option><option value="absent">Absent</option>
+  </select>
+  <label for="fxReason">Reason (required)</label><input id="fxReason" placeholder="e.g. Card scanner was down">
+  <div class="bar">
+    <button class="btn" id="fxSave">Save correction</button>
+    <button class="btn ghost" id="fxClose">Cancel</button>
+  </div>
+  <p class="muted">Corrections are written to the audit log and never email parents.</p>
+</dialog>
+
+<div id="toast"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+<script src="../config.js"></script>
+<script src="../js/app.js"></script>
+<script src="../js/reports.js"></script>
+<script>
+(async () => {
+const me = await requireRole('../', ['admin']);
+if (!me) return;
+const $ = id => document.getElementById(id);
+let DATA = [], FIX = null, UNREC = [];
+
+// ---------- filters ----------
+const [cl, se] = await Promise.all([
+  sb.from('school_classes').select('id,class_name,arm').order('section').order('class_name').order('arm'),
+  sb.from('academic_sessions').select('id,name,is_current').order('starts_on', { ascending: false })
+]);
+$('fClass').innerHTML = '<option value="">All classes</option>' + (cl.data || []).map(c => `<option value="${c.id}">${esc(classLabel(c))}</option>`).join('');
+$('fSession').innerHTML = '<option value="">All sessions</option>' + (se.data || []).map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
+$('fFrom').value = lagosToday(); $('fTo').value = lagosToday(); $('rvDate').value = lagosToday();
+
+const filters = () => ({ from: $('fFrom').value, to: $('fTo').value, cls: $('fClass').value, q: $('fSearch').value.trim().replace(/[%_\\]/g, ''), status: $('fStatus').value, session: $('fSession').value });
+$('thisMonth').onclick = () => { $('fFrom').value = monthStart(); $('fTo').value = lagosToday(); };
+
+async function run() {
+  const f = filters();
+  if (!f.from || !f.to) return toast('Choose both dates.', true);
+  $('run').disabled = true; $('count').textContent = 'Loading...';
+  try { DATA = await fetchReport(f); }
+  catch (e) { DATA = []; toast(niceError(e), true); }
+  $('run').disabled = false;
+  $('count').textContent = DATA.length + ' record(s)';
+  renderReport($('results'), DATA, { fix: true });
+}
+$('run').onclick = run;
+
+// ---------- exports ----------
+const fname = () => 'attendance_' + $('fFrom').value + '_to_' + $('fTo').value;
+const need = () => { if (!DATA.length) { toast('Run the report first. There is nothing to export.', true); return false; } return true; };
+$('xCsv').onclick = () => need() && exportCSV(DATA, fname());
+$('xXlsx').onclick = () => need() && exportXLSX(DATA, fname());
+$('xPdf').onclick = () => need() && exportPDF(DATA, fname(), 'Attendance report', $('fFrom').value + ' to ' + $('fTo').value + ' | ' + DATA.length + ' records');
+
+// ---------- corrections ----------
+const hhmm = iso => iso ? new Date(iso).toLocaleTimeString('en-GB', { timeZone: RTZ, hour: '2-digit', minute: '2-digit', hour12: false }) : '';
+const toIso = (date, time) => time ? new Date(date + 'T' + time + ':00+01:00').toISOString() : null;   // Nigeria is UTC+1 all year
+
+async function correct(studentId, date, arrival, departure, status, reason) {
+  const { error } = await sb.rpc('correct_attendance', {
+    p_student_id: studentId, p_date: date, p_arrival: arrival, p_departure: departure, p_status: status || null, p_reason: reason
+  });
+  if (error) { toast(niceError(error), true); return false; }
+  toast('Correction saved.'); return true;
+}
+
+$('results').onclick = e => {
+  const i = e.target.dataset.fix; if (i === undefined) return;
+  FIX = DATA[+i];
+  $('fixInfo').textContent = FIX.student_name + ' | ' + FIX.school_date;
+  $('fxIn').value = hhmm(FIX.arrival_at); $('fxOut').value = hhmm(FIX.departure_at);
+  $('fxStatus').value = ''; $('fxReason').value = '';
+  $('fixDlg').showModal();
+};
+$('fxClose').onclick = () => $('fixDlg').close();
+$('fxSave').onclick = async () => {
+  if ($('fxReason').value.trim().length < 5) return toast('Enter a reason (at least 5 characters).', true);
+  const d = FIX.school_date;
+  // only send a time that was changed
+  const inT = $('fxIn').value !== hhmm(FIX.arrival_at) ? toIso(d, $('fxIn').value) : null;
+  const outT = $('fxOut').value !== hhmm(FIX.departure_at) ? toIso(d, $('fxOut').value) : null;
+  if (!inT && !outT && !$('fxStatus').value) return toast('Change a time or the status first.', true);
+  $('fxSave').disabled = true;
+  const ok = await correct(FIX.student_id, d, inT, outT, $('fxStatus').value, $('fxReason').value.trim());
+  $('fxSave').disabled = false;
+  if (ok) { $('fixDlg').close(); run(); }
+};
+
+// ---------- review of students with no record ----------
+$('rvLoad').onclick = async () => {
+  if (!$('rvDate').value) return toast('Choose a date.', true);
+  const { data, error } = await sb.rpc('unrecorded_students', { p_date: $('rvDate').value });
+  if (error) return toast(niceError(error), true);
+  UNREC = data;
+  $('rvList').innerHTML = data.map((s, i) => `<div class="row"><div class="grow"><b>${esc(s.student_name)}</b><br><small>${esc(s.student_number)} | ${esc(s.class_name)}</small></div>
+    <button class="btn sm warn" data-st="absent" data-i="${i}">Absent</button>
+    <button class="btn sm" data-st="excused" data-i="${i}">Excused</button></div>`).join('') || '<p class="muted">Every active student has a record for this date.</p>';
+};
+$('rvList').onclick = async e => {
+  const st = e.target.dataset.st; if (!st) return;
+  const s = UNREC[+e.target.dataset.i];
+  const reason = prompt('Reason for marking ' + s.student_name + ' ' + st + ' (required):');
+  if (!reason || reason.trim().length < 5) return toast('A reason of at least 5 characters is required.', true);
+  if (await correct(s.student_id, $('rvDate').value, null, null, st, reason.trim())) $('rvLoad').click();
+};
+})();
+</script>
+</body>
+</html>
