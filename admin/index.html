@@ -76,6 +76,9 @@
       <label><input type="checkbox" id="chEmail"> Email</label>
       <label><input type="checkbox" id="chSms"> SMS</label>
       <label><input type="checkbox" id="chWa"> WhatsApp</label>
+      <label for="chWaLimit">WhatsApp limit: parents per 24 hours (1 to 249)</label>
+      <input id="chWaLimit" type="number" min="1" max="249" inputmode="numeric">
+      <p class="muted">Meta allows 250 parents a day for an unverified business. Beyond this limit parents get email only.</p>
       <p><button class="btn" id="saveChannels">Save channels</button></p>
     </div>
 
@@ -260,6 +263,7 @@ function renderSetup() {
   $('sAbsent').value = hhmm(s.absent_cutoff);
   const ch = s.enabled_channels || ['email'];
   $('chEmail').checked = ch.includes('email'); $('chSms').checked = ch.includes('sms'); $('chWa').checked = ch.includes('whatsapp');
+  $('chWaLimit').value = s.whatsapp_daily_limit || 200;
   $('sessList').innerHTML = S.sessions.map(x => `<div class="row"><div class="grow"><b>${esc(x.name)}</b> ${x.is_current ? '<small>(current)</small>' : ''}<br><small>${esc(x.starts_on)} to ${esc(x.ends_on)}</small></div>${x.is_current ? '' : `<button class="btn sm" data-cur="${x.id}">Make current</button>`}</div>`).join('') || '<p class="muted">No sessions yet.</p>';
   $('clsList').innerHTML = S.classes.map(c => `<div class="row"><div class="grow"><b>${esc(c.class_name)}${c.arm ? ' ' + esc(c.arm) : ''}</b> <small>${esc(c.section)}</small></div><button class="btn sm warn" data-delcls="${c.id}">Delete</button></div>`).join('') || '<p class="muted">No classes yet.</p>';
 }
@@ -504,7 +508,9 @@ $('saveChannels').onclick = async () => {
   if ($('chSms').checked) list.push('sms');
   if ($('chWa').checked) list.push('whatsapp');
   if (!list.length && !confirm('No channel is switched on, so parents will not be notified. Continue?')) return;
-  const { error } = await sb.from('school_settings').update({ enabled_channels: list }).eq('id', 1);
+  const lim = parseInt($('chWaLimit').value, 10);
+  if (!(lim >= 1 && lim <= 249)) return toast('Enter a WhatsApp limit from 1 to 249.', true);
+  const { error } = await sb.from('school_settings').update({ enabled_channels: list, whatsapp_daily_limit: lim }).eq('id', 1);
   if (error) return toast(niceError(error), true);
   toast('Channels saved. They apply to new scans only.'); loadAll();
 };
