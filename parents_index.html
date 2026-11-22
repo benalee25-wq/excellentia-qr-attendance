@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Parent – QR Attendance</title>
+<link rel="stylesheet" href="../css/styles.css">
+<style>
+main{max-width:560px}
+.big{font-size:1.25rem;font-weight:800}
+.chip{display:inline-block;padding:.1rem .6rem;border-radius:99px;font-size:.85rem;font-weight:600;background:#e3ebe8}
+.chip.ok{background:#dff5ea;color:#0b3d2c}.chip.late{background:#fff3d1;color:#5a3d00}.chip.bad{background:#fde7e4;color:#7a1a12}
+label.tog{display:flex;align-items:center;gap:.6rem;font-weight:400}
+</style>
+</head>
+<body>
+<header class="top">
+  <b id="brand">Parent</b>
+  <span><span id="who"></span> <button class="btn sm ghost" id="logoutBtn">Log out</button></span>
+</header>
+
+<main>
+  <!-- first login: choose a new password -->
+  <section class="panel hide" id="pwBox">
+    <h2>Choose your own password</h2>
+    <p>For your safety, please replace the temporary password the school gave you.</p>
+    <label for="p1">New password (at least 8 characters)</label><input id="p1" type="password" autocomplete="new-password">
+    <label for="p2">Type it again</label><input id="p2" type="password" autocomplete="new-password">
+    <p class="err hide" id="pwErr"></p>
+    <p><button class="btn" id="pwSave" style="width:100%">Save password</button></p>
+  </section>
+
+  <section class="hide" id="app">
+    <div class="panel" id="kidBox">
+      <label for="kid">Child</label>
+      <select id="kid"></select>
+    </div>
+
+    <div class="panel">
+      <h3>Today</h3>
+      <div id="today"></div>
+    </div>
+
+    <div class="panel">
+      <h3>This month</h3>
+      <div class="stats" id="sum" style="grid-template-columns:repeat(2,1fr)"></div>
+    </div>
+
+    <div class="panel">
+      <h3>Attendance history</h3>
+      <div id="hist"></div>
+    </div>
+
+    <div class="panel">
+      <h3>Notices sent to you</h3>
+      <div id="notes"></div>
+    </div>
+
+    <div class="panel hide" id="prefBox">
+      <h3>How should the school contact you?</h3>
+      <label class="tog"><input type="checkbox" id="pEmail"> Email</label>
+      <label class="tog"><input type="checkbox" id="pSms"> SMS</label>
+      <label class="tog"><input type="checkbox" id="pWa"> WhatsApp</label>
+      <p class="muted">You only get a notice on a channel that the school has switched on and that you tick here.</p>
+      <p><button class="btn" id="pSave">Save my choices</button></p>
+    </div>
+  </section>
+
+  <p class="err hide" id="fatal"></p>
+</main>
+
+<div id="toast"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="../config.js"></script>
+<script src="../js/app.js"></script>
+<script>
+(async () => {
+const me = await requireRole('../', ['parent']);
+if (!me) return;
+const $ = id => document.getElementById(id);
+const TZ = 'Africa/Lagos';
+const today = () => new Date().toLocaleDateString('en-CA', { timeZone: TZ });
+const daysAgo = n => new Date(Date.now() - n * 864e5).toLocaleDateString('en-CA', { timeZone: TZ });
+const tm = iso => iso ? new Date(iso).toLocaleTimeString('en-GB', { timeZone: TZ, hour: '2-digit', minute: '2-digit', hour12: true }) : '';
+const dt = iso => new Date(iso).toLocaleString('en-GB', { timeZone: TZ, day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true });
+const longDay = d => new Date(d + 'T12:00:00+01:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: TZ });
+const nameOf = s => [s.first_name, s.middle_name, s.last_name].filter(Boolean).join(' ');
+
+let KIDS = [], CLS = [], ATT = [], NOTES = [];
+
+// ---------- first login: replace the temporary password ----------
+const { data: { user } } = await sb.auth.getUser();
+if (user && user.user_metadata && user.user_metadata.must_change_password) {
+  $('pwBox').classList.remove('hide');
+  $('pwSave').onclick = async () => {
+    const a = $('p1').value, b = $('p2').value, err = $('pwErr');
+    err.classList.add('hide');
+    if (a.length < 8) { err.textContent = 'Use at least 8 characters.'; return err.classList.remove('hide'); }
+    if (a !== b) { err.textContent = 'The two passwords are not the same.'; return err.classList.remove('hide'); }
+    $('pwSave').disabled = true;
+    const { error } = await sb.auth.updateUser({ password: a, data: { must_change_password: false } });
+    $('pwSave').disabled = false;
+    if (error) { err.textContent = error.message; return err.classList.remove('hide'); }
+    $('pwBox').classList.add('hide'); toast('Password saved.'); start();
+  };
+} else start();
+
+// ---------- load everything this parent is allowed to see ----------
+async function start() {
+  const [k, c, a, n, g, s] = await Promise.all([
+    sb.from('students').select('id,first_name,middle_name,last_name,student_number,class_id').order('first_name'),
+    sb.from('school_classes').select('id,class_name,arm'),
+    sb.from('attendance_records').select('student_id,school_date,arrival_at,departure_at,status').gte('school_date', daysAgo(120)).order('school_date', { ascending: false }),
+    sb.from('notification_logs').select('student_id,event,channel,status,created_at').order('created_at', { ascending: false }).limit(150),
+    sb.from('guardians').select('id,notify_email,notify_sms,notify_whatsapp').maybeSingle(),
+    sb.from('school_settings').select('school_name').eq('id', 1).maybeSingle()
+  ]);
+  const bad = [k, c, a, n].find(r => r.error);
+  if (bad) { $('fatal').textContent = niceError(bad.error); return $('fatal').classList.remove('hide'); }
+  KIDS = k.data; CLS = c.data; ATT = a.data; NOTES = n.data;
+  if (s.data) $('brand').textContent = s.data.school_name;
+
+  $('app').classList.remove('hide');
+  if (!KIDS.length) {
+    $('app').innerHTML = '<div class="panel"><p>No child is linked to your login yet. Please contact the school office.</p></div>';
+    return;
+  }
+  $('kid').innerHTML = KIDS.map((x, i) => `<option value="${i}">${esc(nameOf(x))}</option>`).join('');
+  $('kidBox').classList.toggle('hide', KIDS.length < 2);
+  $('kid').onchange = show;
+  if (g.data) {
+    $('prefBox').classList.remove('hide');
+    $('pEmail').checked = g.data.notify_email; $('pSms').checked = g.data.notify_sms; $('pWa').checked = g.data.notify_whatsapp;
+  }
+  show();
+}
+
+const clsName = id => { const c = CLS.find(x => x.id === id); return c ? c.class_name + (c.arm ? ' ' + c.arm : '') : ''; };
+const WORD = { pending: 'Sending', processing: 'Sending', accepted: 'Sent', delivered: 'Delivered', read: 'Read', failed: 'Failed', cancelled: 'Cancelled' };
+
+function stateOf(r) {
+  if (r.status === 'excused') return ['Excused', ''];
+  if (r.status === 'absent') return ['Absent', 'bad'];
+  if (!r.arrival_at) return ['No arrival recorded', ''];
+  if (!r.departure_at && r.school_date < today()) return ['No departure recorded', 'late'];
+  if (!r.departure_at) return ['At school', 'ok'];
+  return r.status === 'late' ? ['Late', 'late'] : ['Present', 'ok'];
+}
+
+function show() {
+  const kid = KIDS[+$('kid').value || 0];
+  const mine = ATT.filter(r => r.student_id === kid.id);
+
+  // today
+  const t = mine.find(r => r.school_date === today());
+  $('today').innerHTML = `<p class="big">${esc(nameOf(kid))}</p><p class="muted">${esc(clsName(kid.class_id))} | ${esc(kid.student_number)}</p>` +
+    (t && t.arrival_at
+      ? `<p>Arrived at <b>${esc(tm(t.arrival_at))}</b> ${t.status === 'late' ? '<span class="chip late">Late</span>' : '<span class="chip ok">On time</span>'}</p>
+         <p>${t.departure_at ? 'Left school at <b>' + esc(tm(t.departure_at)) + '</b>' : '<span class="chip ok">Still at school</span>'}</p>`
+      : t && (t.status === 'excused' || t.status === 'absent')
+        ? `<p><span class="chip ${t.status === 'absent' ? 'bad' : ''}">${t.status === 'absent' ? 'Marked absent' : 'Excused'}</span></p>`
+        : '<p>No arrival has been recorded yet today.</p>');
+
+  // this month
+  const first = today().slice(0, 8) + '01';
+  const m = mine.filter(r => r.school_date >= first);
+  const cnt = f => m.filter(f).length;
+  $('sum').innerHTML = [
+    ['Days at school', cnt(r => r.arrival_at)], ['Late arrivals', cnt(r => r.arrival_at && r.status === 'late')],
+    ['No departure scan', cnt(r => r.arrival_at && !r.departure_at && r.school_date < today())],
+    ['Absent or excused', cnt(r => r.status === 'absent' || r.status === 'excused')]
+  ].map(([l, n]) => `<div class="stat"><b>${n}</b>${l}</div>`).join('');
+
+  // history
+  $('hist').innerHTML = mine.slice(0, 30).map(r => { const [w, c] = stateOf(r);
+    return `<div class="row"><div class="grow"><b>${esc(longDay(r.school_date))}</b><br><small>In ${esc(tm(r.arrival_at) || '-')} | Out ${esc(tm(r.departure_at) || '-')}</small></div><span class="chip ${c}">${esc(w)}</span></div>`;
+  }).join('') || '<p class="muted">No attendance recorded yet.</p>';
+
+  // notices for this child
+  $('notes').innerHTML = NOTES.filter(x => x.student_id === kid.id).slice(0, 30).map(x =>
+    `<div class="row"><div class="grow"><b>${x.event === 'arrival' ? 'Arrival' : 'Departure'} notice</b> <small>by ${esc(x.channel)}</small><br><small>${esc(dt(x.created_at))}</small></div><span class="chip ${x.status === 'failed' ? 'bad' : x.status === 'delivered' || x.status === 'read' ? 'ok' : ''}">${esc(WORD[x.status] || x.status)}</span></div>`
+  ).join('') || '<p class="muted">No notices yet.</p>';
+}
+
+// ---------- my notification choices ----------
+$('pSave').onclick = async () => {
+  $('pSave').disabled = true;
+  const { error } = await sb.rpc('set_my_notification_preferences', { p_email: $('pEmail').checked, p_sms: $('pSms').checked, p_whatsapp: $('pWa').checked });
+  $('pSave').disabled = false;
+  if (error) return toast(niceError(error), true);
+  toast('Your choices are saved.');
+};
+})();
+</script>
+</body>
+</html>
