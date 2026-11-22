@@ -75,6 +75,7 @@ async function route() {
   if (p.is_active && p.role === 'admin') { location.href = 'admin/index.html'; return; }
   if (p.is_active && p.role === 'teacher') { location.href = 'teacher/index.html'; return; }
   if (p.is_active && p.role === 'management') { location.href = 'management/index.html'; return; }
+  if (p.is_active && p.role === 'parent') { location.href = 'parent/index.html'; return; }
   await sb.auth.signOut();
   show(p.is_active ? 'Your ' + p.role + ' dashboard is coming in a later phase.'
                    : 'This account is switched off. Contact the school administrator.');
@@ -95,4 +96,3 @@ if (sb) route();
 </script>
 </body>
 </html>
-
