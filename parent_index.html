@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Parent logins – QR Attendance</title>
+<link rel="stylesheet" href="../css/styles.css">
+<style>.pw{font-family:ui-monospace,Menlo,Consolas,monospace;font-weight:700;background:#fff6dc;padding:.1rem .4rem;border-radius:6px}</style>
+</head>
+<body>
+<header class="top">
+  <b>Parent logins</b>
+  <span><a class="btn sm ghost" href="index.html" style="text-decoration:none">Dashboard</a> <button class="btn sm ghost" id="logoutBtn">Log out</button></span>
+</header>
+
+<main>
+  <div class="panel">
+    <h2>Give parents a login</h2>
+    <p>A parent logs in with the <b>email address</b> saved on their guardian record. Each parent gets a random temporary password that they must change the first time they log in. Parents with no email cannot get a login.</p>
+    <div class="grid2">
+      <select id="fShow" aria-label="Show">
+        <option value="need">Need a login</option><option value="has">Already have a login</option>
+        <option value="noemail">No email address</option><option value="all">Everyone</option>
+      </select>
+      <input id="fSearch" type="search" placeholder="Search name or email" aria-label="Search">
+    </div>
+    <div class="bar">
+      <button class="btn amber" id="selNeed">Select everyone shown</button>
+      <button class="btn" id="create">Create logins for selected</button>
+    </div>
+    <p class="muted" id="count"></p>
+    <div id="list"></div>
+  </div>
+
+  <div class="panel hide" id="resBox">
+    <h2>Logins ready</h2>
+    <div class="note"><b>Write these down or download them now.</b> The passwords are shown only once and cannot be read again. Give each parent their own details privately, for example in person or by a private message. If a parent forgets, tap Reset password to make a new one.</div>
+    <div class="bar"><button class="btn sm amber" id="slips">Download the login slips (CSV)</button></div>
+    <div id="resList"></div>
+  </div>
+</main>
+
+<div id="toast"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="../config.js"></script>
+<script src="../js/app.js"></script>
+<script src="../js/reports.js"></script>
+<script>
+(async () => {
+const me = await requireRole('../', ['admin']);
+if (!me) return;
+const $ = id => document.getElementById(id);
+let G = [], RES = [];
+const SITE = new URL('../', location.href).href;
+
+async function fnError(error) {
+  try { const b = await error.context.json(); if (b && b.error) return b.error; } catch (_) { /* ignore */ }
+  return error.message || 'The request failed.';
+}
+
+async function load() {
+  try {
+    G = await pageAll((a, b) => sb.from('guardians')
+      .select('id,full_name,email,phone,user_id,student_guardians(student:students(first_name,last_name))')
+      .order('full_name').order('id').range(a, b));
+  } catch (e) { return toast(niceError(e), true); }
+  render();
+}
+
+const state = g => g.user_id ? 'has' : (g.email ? 'need' : 'noemail');
+function shown() {
+  const f = $('fShow').value, q = $('fSearch').value.trim().toLowerCase();
+  return G.filter(g => (f === 'all' || state(g) === f) &&
+    (!q || (g.full_name + ' ' + (g.email || '')).toLowerCase().includes(q)));
+}
+function render() {
+  const list = shown();
+  $('count').textContent = list.length + ' parent(s)' + (list.length > 200 ? ' (showing the first 200)' : '');
+  $('list').innerHTML = list.slice(0, 200).map(g => {
+    const kids = (g.student_guardians || []).map(x => x.student ? x.student.first_name + ' ' + x.student.last_name : '').filter(Boolean).join(', ');
+    const st = state(g);
+    return `<div class="row">
+      ${st === 'need' ? `<input type="checkbox" class="pick" value="${g.id}" aria-label="Select ${esc(g.full_name)}">` : ''}
+      <div class="grow"><b>${esc(g.full_name)}</b><br><small>${esc(g.email || 'no email')} | ${esc(kids || 'no child linked')}</small></div>
+      ${st === 'has' ? `<small>Has a login</small> <button class="btn sm" data-reset="${g.id}">Reset password</button>` : st === 'need' ? '<small>Needs a login</small>' : '<small>No email</small>'}
+    </div>`;
+  }).join('') || '<p class="muted">Nobody to show.</p>';
+}
+$('fShow').onchange = render; $('fSearch').oninput = render;
+$('selNeed').onclick = () => document.querySelectorAll('.pick').forEach(c => c.checked = true);
+
+function showResults(results) {
+  RES = RES.concat(results);
+  $('resBox').classList.remove('hide');
+  $('resList').innerHTML = RES.map(r => `<div class="row"><div class="grow"><b>${esc(r.name)}</b><br><small>${esc(r.email || '')}</small></div>
+    ${r.temp_password ? `<span class="pw">${esc(r.temp_password)}</span><small>${r.status === 'reset' ? 'new password' : 'created'}</small>` : `<small>${esc(r.status)}: ${esc(r.reason || '')}</small>`}</div>`).join('');
+}
+
+async function call(ids, reset) {
+  const out = [];
+  for (let i = 0; i < ids.length; i += 25) {
+    const { data, error } = await sb.functions.invoke('admin-create-parent', { body: { guardian_ids: ids.slice(i, i + 25), reset } });
+    if (error) throw new Error(await fnError(error));
+    out.push(...data.results);
+  }
+  return out;
+}
+
+$('create').onclick = async () => {
+  const ids = [...document.querySelectorAll('.pick')].filter(c => c.checked).map(c => c.value);
+  if (!ids.length) return toast('Tick at least one parent first.', true);
+  if (!confirm('Create logins for ' + ids.length + ' parent(s)?')) return;
+  $('create').disabled = true;
+  try { showResults(await call(ids, false)); toast('Done. Copy the passwords now.'); }
+  catch (e) { toast(e.message, true); }
+  $('create').disabled = false;
+  load();
+};
+
+$('list').onclick = async e => {
+  const id = e.target.dataset.reset; if (!id) return;
+  if (!confirm('Make a new temporary password for this parent? Their old password will stop working.')) return;
+  try { showResults(await call([id], true)); toast('New password made. Copy it now.'); }
+  catch (err) { toast(err.message, true); }
+};
+
+$('slips').onclick = () => {
+  const q = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+  const rows = [['Parent', 'Login email', 'Temporary password', 'Website'], ...RES.filter(r => r.temp_password).map(r => [r.name, r.email, r.temp_password, SITE])];
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['\ufeff' + rows.map(r => r.map(q).join(',')).join('\r\n')], { type: 'text/csv;charset=utf-8' }));
+  a.download = 'parent_login_slips.csv'; document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+};
+
+load();
+})();
+</script>
+</body>
+</html>
